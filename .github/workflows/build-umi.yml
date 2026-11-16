@@ -1,0 +1,51 @@
+name: build-umi
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'devices/umi/**'
+      - 'crates/**'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - uses: nttld/setup-ndk@v1
+        id: ndk
+        with:
+          ndk-version: r26b
+
+      - name: 配置 linker
+        run: |
+          NDK="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$NDK/aarch64-linux-android26-clang" >> $GITHUB_ENV
+          echo "CC_aarch64_linux_android=$NDK/aarch64-linux-android26-clang" >> $GITHUB_ENV
+
+      - name: 编译
+        run: cargo build --release --target aarch64-linux-android 2>&1 | tee build.log
+
+      - name: 定位产物
+        run: |
+          BIN=$(find target/aarch64-linux-android/release -maxdepth 1 -type f -executable \
+                ! -name '*.so' ! -name '*.d' | head -1)
+          echo "找到产物: $BIN"
+          file "$BIN"
+          echo "BIN_PATH=$BIN" >> $GITHUB_ENV
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: skyward-umi-bin
+          path: ${{ env.BIN_PATH }}
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: build-log
+          path: build.log
